@@ -1,0 +1,192 @@
+
+
+# Read the file 
+```{r}
+
+library(readxl)
+
+
+RF_Data1 = read.csv(file.choose())
+RF_Data2 = RF_Data1[, -c(1,5)]
+str(RF_Data2)
+dim(RF_Data2)
+summary(RF_Data2)
+
+```
+
+```{r}
+RF_Data2$Personal.Loan = as.factor(RF_Data2$Personal_Loan)
+RF_Data2$Securities_Account = as.factor(RF_Data2$Securities_Account)
+RF_Data2$CD_Account = as.factor(RF_Data2$CD_Account)
+RF_Data2$Online = as.factor(RF_Data2$Online)
+RF_Data2$CreditCard = as.factor(RF_Data2$CreditCard)
+names(RF_Data2)
+str(RF_Data2)
+```
+
+```{r}
+colSums(is.na(RF_Data2))
+library(VIM)
+RF_Data3 = kNN(RF_Data2, variable = "Family_members", k = 6)
+summary(RF_Data3)
+
+```
+
+```{r}
+RF_Data3$Experience[RF_Data3$Experience<0] = 0
+
+
+summary(RF_Data3$Experience)
+```
+
+
+```{r}
+## split into training and test sets
+library(caTools)
+
+set.seed(123)
+split = sample.split(RF_Data3$Personal_Loan, SplitRatio = 0.8)
+traindata = subset(RF_Data3, split == TRUE)
+testdata = subset(RF_Data3, split == FALSE)
+
+## Check if distribution of partition data is correct Testing dataset
+prop.table(table(traindata$Personal_Loan))
+prop.table(table(testdata$Personal_Loan))
+
+```
+
+```{r}
+dim(traindata)
+dim(testdata)
+```
+
+
+```{r}
+mtry1 = sqrt(12)
+mtry1
+
+?randomForest
+
+seed=420
+
+library(randomForest)
+set.seed(seed = 420)
+RF1<- randomForest(Personal_Loan ~., data = traindata, 
+                   ntree=1500, mtry = 4,importance=TRUE, set.seed(420) )
+RF1
+
+
+
+```
+
+```{r}
+RF3<- randomForest(Personal_Loan ~ ., data = traindata, 
+                   ntree=1500, mtry = 3,importance=TRUE, 
+                   cutoff=c(0.25,0.75),set.seed(420)  )
+RF3
+```
+
+
+```{r}
+varImpPlot(RF3)
+```
+
+#Predicting on test data
+
+```{r}
+## Predict using the RF model
+traindata$predict.class=predict(RF3,traindata,type="class")
+traindata$predict.score=predict(RF3,traindata)
+
+## Creating the confusion matrix
+tabtrain=with(traindata,table(Personal_Loan,predict.class))
+tabtrain
+```
+
+```{r}
+## Predict using the RF model
+testdata$predict.class=predict(RF3,testdata,type="class")
+testdata$predict.score=predict(RF3,testdata)
+
+## Creating the confusion matrix
+tabtest=with(testdata,table(Personal_Loan,predict.class))
+tabtest
+```
+
+#Train Model performance
+
+```{r}
+TN_train = tabtrain[1,1]
+TP_train = tabtrain[2,2]
+FN_train = tabtrain[2,1]
+FP_train = tabtrain[1,2]
+
+train_acc = (TN_train+TP_train)/(TN_train+TP_train+FN_train+FP_train)
+train_acc
+
+train_sens = TP_train/(TP_train+FN_train)
+train_sens
+
+
+train_spec = TN_train/(TN_train+FP_train)
+train_spec
+```
+
+#Test data prformance
+
+```{r}
+TN_test = tabtest[1,1]
+TP_test = tabtest[2,2]
+FN_test = tabtest[2,1]
+FP_test = tabtest[1,2]
+
+test_acc = (TN_test+TP_test)/(TN_test+TP_test+FN_test+FP_test)
+test_acc
+
+test_sens = TP_test/(TP_test+FN_test)
+test_sens
+
+
+test_spec = TN_test/(TN_test+FP_test)
+test_spec
+```
+
+```{r}
+df_results_train = data.frame(train_acc, train_sens, train_spec)
+names(df_results_train) = c("ACC", "SENS", "SPEC")
+df_results_test = data.frame(test_acc, test_sens, test_spec)
+names(df_results_test) = c("ACC", "SENS", "SPEC")
+
+?rbind
+df_fin =rbind(df_results_train, df_results_test)
+row.names(df_fin) = c('tree_full_train', 'tree_full_test')
+df_fin
+```
+
+
+#ROC and AUC
+
+```{r}
+library(pROC)
+traindata$predict.score=predict(RF3,traindata, type = "prob")
+traindata$predict.score
+roc_obj = roc(traindata$Personal_Loan, traindata$predict.score[,2])
+
+
+plot(roc_obj, print.auc = T)
+
+
+testdata$predict.score=predict(RF3,testdata, type = "prob")
+testdata$predict.score
+roc_obj = roc(testdata$Personal_Loan, testdata$predict.score[,2])
+
+
+plot(roc_obj, print.auc = T)
+```
+
+
+
+
+
+
+

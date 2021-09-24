@@ -1,0 +1,486 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#Loading the data file and running the Dimension, Structure and Summary Stats
+```{r}
+
+library(readxl)
+
+
+Data1 = read_excel(file.choose())
+Data2 = Data1[, -c(1,5)]
+str(Data2)
+dim(Data2)
+summary(Data2)
+
+
+```
+
+#Converting the respective dependent and independent variables to catagorical variables
+
+```{r}
+Data2$Personal_Loan = as.factor(Data2$Personal_Loan)
+Data2$Securities_Account = as.factor(Data2$Securities_Account)
+Data2$CD_Account = as.factor(Data2$CD_Account)
+Data2$Online = as.factor(Data2$Online)
+Data2$CreditCard = as.factor(Data2$CreditCard)
+names(Data2)
+str(Data2)
+```
+
+
+# Checking for null values in all the columns and doing a KNN impute for the null values in Family Members column
+```{r}
+colSums(is.na(Data2))
+library(VIM)
+Data3 = kNN(Data2, variable = "Family_members", k = 6)
+summary(Data3)
+
+```
+
+# There are few negative values in experience which are replaced with zeros
+
+```{r}
+Data3$Experience[Data3$Experience<0] = 0
+
+
+summary(Data3$Experience)
+```
+
+
+# Exploratory Data Analysis - Univariate
+
+```{r}
+boxplot(Data3$Age, Main  = "Age ditribution", xlab = "Age", horizontal = T) 
+
+boxplot(Data3$Experience, Main  = "Experience ditribution", xlab = "Experience", horizontal = T)
+
+boxplot(Data3$Income, Main  = "Income ditribution", xlab = "Income", horizontal = T)
+
+boxplot(Data3$Family_members, Main  = "Family ditribution", xlab = "Family Members", horizontal = T)
+
+boxplot(Data3$CCAvg, Main  = "Credit Card avg spend", xlab = "CCAvg", horizontal = T)
+
+hist(Data3$CCAvg)
+
+boxplot(Data3$Mortgage, Main  = "Mortgage", xlab = "Value of house mortgage", horizontal = T)
+
+library(ggplot2)
+
+
+ggplot(Data3) +
+  aes(x = Data3$Personal_Loan) +
+  geom_bar() + 
+  geom_text(stat = 'count',aes(label =..count.., vjust = -0.2))
+
+ggplot(Data3) +
+  aes(x = Data3$Education) +
+  geom_bar() + 
+  geom_text(stat = 'count',aes(label =..count.., vjust = -0.2))
+
+ggplot(Data3) +
+  aes(x = Data3$Securities_Account) +
+  geom_bar() + 
+  geom_text(stat = 'count',aes(label =..count.., vjust = -0.2))
+
+ggplot(Data3) +
+  aes(x = Data3$CD_Account) +
+  geom_bar() + 
+  geom_text(stat = 'count',aes(label =..count.., vjust = -0.2))
+
+ggplot(Data3) +
+  aes(x = Data3$Online) +
+  geom_bar() + 
+  geom_text(stat = 'count',aes(label =..count.., vjust = -0.2))
+
+ggplot(Data3) +
+  aes(x = Data3$CreditCard) +
+  geom_bar() + 
+  geom_text(stat = 'count',aes(label =..count.., vjust = -0.2))
+
+```
+
+# Exploratory Data Analysis - bivariate
+
+```{r}
+ggplot(data=Data3, aes(x=Personal_Loan, y=Age, fill=Personal_Loan))+geom_boxplot()
+
+ggplot(data=Data3, aes(x=Personal_Loan, y=Experience, fill=Personal_Loan))+geom_boxplot()
+
+ggplot(data=Data3, aes(x=Personal_Loan, y=Income, fill=Personal_Loan))+geom_boxplot()
+
+ggplot(data=Data3, aes(x=Personal_Loan, y=Family_members, fill=Personal_Loan))+geom_boxplot()
+
+ggplot(data=Data3, aes(x=Personal_Loan, y=CCAvg, fill=Personal_Loan))+geom_boxplot()
+
+
+
+ggplot(Data3, aes(fill=Personal_Loan, x=Education, y=as.numeric(Education))) +
+  geom_bar( stat="identity", position="fill")
+
+ggplot(Data3, aes(fill=Personal_Loan, x=CD_Account, y=as.numeric(CD_Account))) +
+  geom_bar( stat="identity", position="fill")
+
+ggplot(Data3, aes(fill=Personal_Loan, x=Securities_Account, y=as.numeric(Securities_Account))) +
+  geom_bar( stat="identity", position="fill")
+
+ggplot(Data3, aes(fill=Personal_Loan, x=Online, y=as.numeric(Online))) +
+  geom_bar( stat="identity", position="fill")
+
+ggplot(Data3, aes(fill=Personal_Loan, x=CreditCard, y=as.numeric(CreditCard))) +
+  geom_bar( stat="identity", position="fill")
+
+
+```
+
+
+#Splitting the data into train and test data in the ratio 8:2
+```{r}
+## split into training and test sets
+library(caTools)
+
+set.seed(123)
+split = sample.split(Data3$Personal_Loan, SplitRatio = 0.80)
+traindata = subset(Data3, split == TRUE)
+testdata = subset(Data3, split == FALSE)
+
+## Check if distribution of partition data is correct Testing dataset
+prop.table(table(Data3$Personal_Loan))
+prop.table(table(Data3$Personal_Loan))
+```
+Buling a fully grown tree initially and print it
+```{r}
+library(rpart)
+library(rpart.plot)
+set.seed(420)
+
+tree_full = rpart(formula = Personal_Loan~., data = traindata, cp=-1, minsplit=2, minbucket=1)
+rpart.plot(tree_full, cex=0.4)
+
+
+boxcols <- c("palegreen3", "orange")[tree_full$frame$yval]
+
+par(xpd=TRUE)
+prp(tree_full, faclen = 0, cex = 0.3, extra = 1, box.col = boxcols)
+```
+
+```{r}
+print(tree_full)
+
+plotcp(tree_full)
+```
+
+
+Predict on the train and test data set
+
+```{r}
+## Predict using the CART model
+traindata$predict.class=predict(tree_full,traindata,type="class")
+traindata$predict.score=predict(tree_full,traindata)
+
+## Creating the confusion matrix
+tabtrain=with(traindata,table(Personal_Loan,predict.class))
+tabtrain
+
+TN_train = tabtrain[1,1]
+TP_train = tabtrain[2,2]
+FN_train = tabtrain[2,1]
+FP_train = tabtrain[1,2]
+
+train_acc = (TN_train+TP_train)/(TN_train+TP_train+FN_train+FP_train)
+train_acc
+
+train_sens = TP_train/(TP_train+FN_train)
+train_sens
+
+
+train_spec = TN_train/(TN_train+FP_train)
+train_spec
+```
+
+```{r}
+## Predict using the CART model
+testdata$predict.class=predict(tree_full,testdata,type="class")
+testdata$predict.score=predict(tree_full,testdata)
+
+## Creating the confusion matrix
+tabtest=with(testdata,table(Personal_Loan,predict.class))
+tabtest
+
+TN_test = tabtest[1,1]
+TP_test = tabtest[2,2]
+FN_test = tabtest[2,1]
+FP_test = tabtest[1,2]
+
+test_acc = (TN_test+TP_test)/(TN_test+TP_test+FN_test+FP_test)
+test_acc
+
+test_sens = TP_test/(TP_test+FN_test)
+test_sens
+
+
+test_spec = TN_test/(TN_test+FP_test)
+test_spec
+```
+
+#Finding the performance measures of the full tree on train and test data set
+```{r}
+df_results_train = data.frame(train_acc, train_sens, train_spec)
+names(df_results_train) = c("ACC", "SENS", "SPEC")
+df_results_test = data.frame(test_acc, test_sens, test_spec)
+names(df_results_test) = c("ACC", "SENS", "SPEC")
+
+?rbind
+df_fin =rbind(df_results_train, df_results_test)
+row.names(df_fin) = c('tree_full_train', 'tree_full_test')
+df_fin
+
+```
+
+#remove predicted score and class before running other models
+```{r}
+traindata$predict.class = NULL
+traindata$predict.score = NULL
+testdata$predict.class = NULL
+testdata$predict.score = NULL
+```
+
+# Pruning using minbuckt and minsplit
+
+```{r}
+
+set.seed(123)
+?rpart
+
+tree_manual_prune=rpart(formula = Personal_Loan~., data = traindata, method="class",control = rpart.control(minsplit = 50,  minbucket = 15))
+
+
+
+rpart.plot(tree_manual_prune, cex=0.8)
+```
+
+# Predict on the train data set and calculating the performance measures
+```{r}
+## Predict using the CART model
+traindata$predict.class=predict(tree_manual_prune,traindata,type="class")
+traindata$predict.score=predict(tree_manual_prune,traindata)
+
+## Creating the confusion matrix
+tabtrain=with(traindata,table(Personal_Loan,predict.class))
+tabtrain
+
+TN_train = tabtrain[1,1]
+TP_train = tabtrain[2,2]
+FN_train = tabtrain[2,1]
+FP_train = tabtrain[1,2]
+
+train_acc = (TN_train+TP_train)/(TN_train+TP_train+FN_train+FP_train)
+train_acc
+
+train_sens = TP_train/(TP_train+FN_train)
+train_sens
+
+
+train_spec = TN_train/(TN_train+FP_train)
+train_spec
+```
+
+#Predict on the test data set and calculating the performance measures
+
+```{r}
+## Predict using the CART model
+testdata$predict.class=predict(tree_manual_prune,testdata,type="class")
+testdata$predict.score=predict(tree_manual_prune,testdata)
+
+## Creating the confusion matrix
+tabtest=with(testdata,table(Personal_Loan,predict.class))
+tabtest
+
+TN_test = tabtest[1,1]
+TP_test = tabtest[2,2]
+FN_test = tabtest[2,1]
+FP_test = tabtest[1,2]
+
+test_acc = (TN_test+TP_test)/(TN_test+TP_test+FN_test+FP_test)
+test_acc
+
+test_sens = TP_test/(TP_test+FN_test)
+test_sens
+
+
+test_spec = TN_test/(TN_test+FP_test)
+test_spec
+```
+
+```{r}
+df_results_train = data.frame(train_acc, train_sens, train_spec)
+names(df_results_train) = c("ACC", "SENS", "SPEC")
+df_results_test = data.frame(test_acc, test_sens, test_spec)
+names(df_results_test) = c("ACC", "SENS", "SPEC")
+
+?rbind
+df_fin =rbind(df_fin, df_results_train, df_results_test)
+row.names(df_fin) = c('tree_full_train', 'tree_full_test', 'MPruned tree_train', 'Mpruned tree_test')
+df_fin
+```
+
+```{r}
+# Remove predicted score and class before running other models
+traindata$predict.class = NULL
+traindata$predict.score = NULL
+testdata$predict.class = NULL
+testdata$predict.score = NULL
+```
+
+```{r}
+
+printcp(tree_full)
+plotcp(tree_full)
+
+bestcp=tree_full$cptable[which.min(tree_full$cptable[,"xerror"]),"CP"]
+bestcp
+
+
+ptree=prune(tree_full,cp=bestcp)
+print(ptree)
+rpart.plot(ptree, cex = 0.8)
+```
+
+
+```{r}
+## Predict using the CART model
+traindata$predict.class=predict(ptree,traindata,type="class")
+traindata$predict.score=predict(ptree,traindata)
+
+## Creating the confusion matrix
+tabtrain=with(traindata,table(Personal_Loan,predict.class))
+tabtrain
+
+TN_train = tabtrain[1,1]
+TP_train = tabtrain[2,2]
+FN_train = tabtrain[2,1]
+FP_train = tabtrain[1,2]
+
+train_acc = (TN_train+TP_train)/(TN_train+TP_train+FN_train+FP_train)
+train_acc
+
+train_sens = TP_train/(TP_train+FN_train)
+train_sens
+
+
+train_spec = TN_train/(TN_train+FP_train)
+train_spec
+
+## Predict using the CART model
+testdata$predict.class=predict(ptree,testdata,type="class")
+testdata$predict.score=predict(ptree,testdata)
+
+## Creating the confusion matrix
+tabtest=with(testdata,table(Personal_Loan,predict.class))
+tabtest
+
+TN_test = tabtest[1,1]
+TP_test = tabtest[2,2]
+FN_test = tabtest[2,1]
+FP_test = tabtest[1,2]
+
+test_acc = (TN_test+TP_test)/(TN_test+TP_test+FN_test+FP_test)
+test_acc
+
+test_sens = TP_test/(TP_test+FN_test)
+test_sens
+
+
+test_spec = TN_test/(TN_test+FP_test)
+test_spec
+```
+
+```{r}
+df_results_train = data.frame(train_acc, train_sens, train_spec)
+names(df_results_train) = c("ACC", "SENS", "SPEC")
+df_results_test = data.frame(test_acc, test_sens, test_spec)
+names(df_results_test) = c("ACC", "SENS", "SPEC")
+
+?rbind
+df_fin =rbind(df_fin, df_results_train, df_results_test)
+row.names(df_fin) = c('tree_full_train', 'tree_full_test', 'MPruned tree_train', 'MPruned tree_test', 'Best CP_tree_train', 'Best CP_ptree_test')
+round(df_fin,2)
+```
+
+#Printing the best tree
+
+```{r}
+boxcols <- c("palegreen3", "orange")[tree_full$frame$yval]
+
+par(xpd=TRUE)
+prp(ptree, faclen = 0, cex = 0.6, extra = 1, box.col = boxcols)
+
+
+
+```
+
+```{r}
+#Variable importance
+library(caret)
+
+ptree$variable.importance
+
+df_cart=data.frame(round(ptree$variable.importance,2))
+df_cart
+write.csv(df_cart,"varimpcart.csv")
+```
+
+```{r}
+traindata$predict.class = NULL
+traindata$predict.score = NULL
+testdata$predict.class = NULL
+testdata$predict.score = NULL
+```
+
+```{r}
+## Predict using the CART model
+traindata$predict.class=predict(tree_manual_prune,traindata,type="class")
+traindata$predict.score=predict(tree_manual_prune,traindata)
+
+View(traindata)
+
+```
+
+
+```{r}
+library(pROC)
+roc_obj = roc(traindata$Personal_Loan, traindata$predict.score[,2])
+
+
+plot(roc_obj, print.auc = T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
